@@ -1,39 +1,63 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"sync"
 )
 
-func generateNumbers(total int, ch chan<- int, wg *sync.WaitGroup) {
-	for idx := 1; idx <= total; idx++ {
-		fmt.Printf("Sending %d to channel\n", idx)
-		ch <- idx
+var (
+	errUhOh = errors.New("uh oh")
+)
+
+type ValueError struct {
+	Value int
+	Err   error
+}
+
+func newValueError(value int, err error) *ValueError {
+	return &ValueError{
+		Value: value,
+		Err:   err,
 	}
 }
 
-func printNumbers(idx int, ch <-chan int, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (ve *ValueError) Error() string {
+	return fmt.Sprintf("value error: %s", ve.Err)
+}
 
-	for num := range ch {
-		fmt.Printf("%d: Read %d from channel\n", idx, num)
+func (ve *ValueError) Unwrap() error {
+	return ve.Err
+}
+
+func validateValue(number int) error {
+	if number == 1 {
+		return newValueError(number, fmt.Errorf("this odd"))
+	} else if number == 2 {
+		return newValueError(number, errUhOh)
 	}
+	return nil
+
+}
+
+func runValidation(number int) error {
+	err := validateValue(number)
+	if err != nil {
+		return fmt.Errorf("run error: %w", err)
+	}
+	return nil
 }
 
 func main() {
-	var wg sync.WaitGroup
-	numberChan := make(chan int)
-
-	for idx := 1; idx <= 10; idx++ {
-		wg.Add(1)
-		go printNumbers(idx, numberChan, &wg)
+	for num := 1; num <= 3; num++ {
+		fmt.Printf("validating %d... ", num)
+		err := runValidation(num)
+		var valueErr *ValueError
+		if errors.Is(err, errUhOh) {
+			fmt.Println("oh no!")
+		} else if errors.As(err, &valueErr) {
+			fmt.Printf("value error (%d): %v\n", valueErr.Value, valueErr.Err)
+		} else {
+			fmt.Println("valid!")
+		}
 	}
-
-	generateNumbers(50, numberChan, &wg)
-
-	close(numberChan)
-
-	fmt.Println("Waiting for goroutines to finish... ")
-	wg.Wait()
-	fmt.Println("Done!")
 }
